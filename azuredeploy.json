@@ -1,0 +1,280 @@
+{
+    "$schema":  "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion":  "1.0.0.0",
+    "metadata":  {
+        "title":  "",
+        "description":  "",
+        "prerequisites":  "",
+        "postDeployment":  [
+        ],
+        "prerequisitesDeployTemplateFile":  "",
+        "lastUpdateTime":  "",
+        "entities":  [
+        ],
+        "tags":  [
+        ],
+        "support":  {
+            "tier":  "community",
+            "armtemplate":  "Generated from https://github.com/Azure/Azure-Sentinel/tree/master/Tools/Playbook-ARM-Template-Generator by Antonio Formato"
+        },
+        "author":  {
+            "name":  ""
+        }
+    },
+    "parameters":  {
+        "PlaybookName":  {
+            "defaultValue":  "OpenAIdemo",
+            "type":  "string"
+        }
+    },
+    "variables":  {
+        "Office365ConnectionName":  "[concat('Office365-', parameters('PlaybookName'))]"
+    },
+    "resources":  [
+        {
+            "properties":  {
+                "provisioningState":  "Succeeded",
+                "state":  "Enabled",
+                "definition":  {
+                    "$schema":  "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "contentVersion":  "1.0.0.0",
+                    "parameters":  {
+                        "$connections":  {
+                            "defaultValue":  {
+                            },
+                            "type":  "Object"
+                        }
+                    },
+                    "triggers":  {
+                        "When_a_new_email_arrives_(V3)":  {
+                            "splitOn":  "@triggerBody()?['value']",
+                            "type":  "ApiConnectionNotification",
+                            "inputs":  {
+                                "fetch":  {
+                                    "method":  "get",
+                                    "pathTemplate":  {
+                                        "template":  "/v3/Mail/OnNewEmail"
+                                    },
+                                    "queries":  {
+                                        "folderPath":  "Inbox",
+                                        "subjectFilter":  "OpenAI question"
+                                    }
+                                },
+                                "host":  {
+                                    "connection":  {
+                                        "name":  "@parameters('$connections')['office365']['connectionId']"
+                                    }
+                                },
+                                "subscribe":  {
+                                    "body":  {
+                                        "NotificationUrl":  "@{listCallbackUrl()}"
+                                    },
+                                    "method":  "post",
+                                    "pathTemplate":  {
+                                        "template":  "/GraphMailSubscriptionPoke/$subscriptions"
+                                    },
+                                    "queries":  {
+                                        "folderPath":  "Inbox"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "actions":  {
+                        "Azure_OpenAI_API":  {
+                            "runAfter":  {
+                                "Azure_OpenAI_api-key":  [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type":  "Http",
+                            "inputs":  {
+                                "body":  {
+                                    "max_tokens":  4000,
+                                    "prompt":  "@{variables('question')}"
+                                },
+                                "headers":  {
+                                    "Content-Type":  "application/json",
+                                    "api-key":  "@variables('api-key')"
+                                },
+                                "method":  "POST",
+                                "uri":  "https://your-resource-name.openai.azure.com/openai/deployments/deployment-id/completions?api-version=2022-12-01"
+                            }
+                        },
+                        "Azure_OpenAI_api-key":  {
+                            "runAfter":  {
+                                "Question":  [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type":  "InitializeVariable",
+                            "inputs":  {
+                                "variables":  [
+                                    {
+                                        "name":  "api-key",
+                                        "type":  "string",
+                                        "value":  "Your Azure OpenAI API key"
+                                    }
+                                ]
+                            }
+                        },
+                        "For_each":  {
+                            "foreach":  "@body('Parse_JSON')?['choices']",
+                            "actions":  {
+                                "Send_an_email_(V2)":  {
+                                    "runAfter":  {
+                                    },
+                                    "type":  "ApiConnection",
+                                    "inputs":  {
+                                        "body":  {
+                                            "Body":  "\u003cp\u003eYou asked: \"@{variables('question')}\"\u003cbr\u003e\n\u003cbr\u003e\nAzure Open AI replied: \"@{items('For_each')?['text']}\"\u003c/p\u003e",
+                                            "Importance":  "Normal",
+                                            "Subject":  "Azure OpenAI - reply",
+                                            "To":  "you@email"
+                                        },
+                                        "host":  {
+                                            "connection":  {
+                                                "name":  "@parameters('$connections')['office365']['connectionId']"
+                                            }
+                                        },
+                                        "method":  "post",
+                                        "path":  "/v2/Mail"
+                                    }
+                                }
+                            },
+                            "runAfter":  {
+                                "Parse_JSON":  [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type":  "Foreach"
+                        },
+                        "Parse_JSON":  {
+                            "runAfter":  {
+                                "Azure_OpenAI_API":  [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type":  "ParseJson",
+                            "inputs":  {
+                                "content":  "@body('Azure_OpenAI_API')",
+                                "schema":  {
+                                    "properties":  {
+                                        "choices":  {
+                                            "items":  {
+                                                "properties":  {
+                                                    "finish_reason":  {
+                                                        "type":  "string"
+                                                    },
+                                                    "index":  {
+                                                        "type":  "integer"
+                                                    },
+                                                    "logprobs":  {
+                                                    },
+                                                    "text":  {
+                                                        "type":  "string"
+                                                    }
+                                                },
+                                                "required":  [
+                                                    "text",
+                                                    "index",
+                                                    "finish_reason",
+                                                    "logprobs"
+                                                ],
+                                                "type":  "object"
+                                            },
+                                            "type":  "array"
+                                        },
+                                        "created":  {
+                                            "type":  "integer"
+                                        },
+                                        "id":  {
+                                            "type":  "string"
+                                        },
+                                        "model":  {
+                                            "type":  "string"
+                                        },
+                                        "object":  {
+                                            "type":  "string"
+                                        },
+                                        "usage":  {
+                                            "properties":  {
+                                                "completion_tokens":  {
+                                                    "type":  "integer"
+                                                },
+                                                "prompt_tokens":  {
+                                                    "type":  "integer"
+                                                },
+                                                "total_tokens":  {
+                                                    "type":  "integer"
+                                                }
+                                            },
+                                            "type":  "object"
+                                        }
+                                    },
+                                    "type":  "object"
+                                }
+                            }
+                        },
+                        "Question":  {
+                            "runAfter":  {
+                            },
+                            "type":  "InitializeVariable",
+                            "inputs":  {
+                                "variables":  [
+                                    {
+                                        "name":  "question",
+                                        "type":  "string",
+                                        "value":  "@triggerBody()?['body']"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "outputs":  {
+                    }
+                },
+                "parameters":  {
+                    "$connections":  {
+                        "value":  {
+                            "office365":  {
+                                "connectionId":  "[resourceId('Microsoft.Web/connections', variables('Office365ConnectionName'))]",
+                                "connectionName":  "[variables('Office365ConnectionName')]",
+                                "id":  "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/Office365')]"
+                            }
+                        }
+                    }
+                }
+            },
+            "name":  "[parameters('PlaybookName')]",
+            "type":  "Microsoft.Logic/workflows",
+            "location":  "[resourceGroup().location]",
+            "tags":  {
+                "hidden-SentinelTemplateName":  "OpenAIdemo",
+                "hidden-SentinelTemplateVersion":  "1.0"
+            },
+            "identity":  {
+                "type":  "SystemAssigned"
+            },
+            "apiVersion":  "2017-07-01",
+            "dependsOn":  [
+                "[resourceId('Microsoft.Web/connections', variables('Office365ConnectionName'))]"
+            ]
+        },
+        {
+            "type":  "Microsoft.Web/connections",
+            "apiVersion":  "2016-06-01",
+            "name":  "[variables('Office365ConnectionName')]",
+            "location":  "[resourceGroup().location]",
+            "kind":  "V1",
+            "properties":  {
+                "displayName":  "[variables('Office365ConnectionName')]",
+                "customParameterValues":  {
+                },
+                "api":  {
+                    "id":  "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/Office365')]"
+                }
+            }
+        }
+    ]
+}
